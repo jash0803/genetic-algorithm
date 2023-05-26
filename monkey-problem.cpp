@@ -9,10 +9,10 @@ using namespace std;
 
 // Valid Genes
 const string GENES = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP"\
-"QRSTUVWXYZ 1234567890, .-;:_!\"#%&/()=?@${[]}";
+"QRSTUVWXYZ 1234567890'";
 
 // Target string to be generated
-const string TARGET = "I love GeeksforGeeks";
+const string TARGET = "Let's have a cup of tea";
 
 // Function to generate random numbers in given range
 int random_num(int start, int end)
