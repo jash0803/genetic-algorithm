@@ -9,7 +9,7 @@ using namespace std;
 
 // Valid Genes
 const string GENES = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP"\
-"QRSTUVWXYZ 1234567890'";
+"QRSTUVWXYZ '";
 
 // Target string to be generated
 const string TARGET = "Let's have a cup of tea";
