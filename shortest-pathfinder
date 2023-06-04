@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shortest Pathfinder</title>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.4.1/lib/p5.js"></script>
+    <script>const populationSize = 500;
+const mutationRate = 0.05;
+const panelWidth = 400;
+
+var lifeTime, width0;
+var lifeCycle = 0;
+
+const gridScale = 10;
+const targetSize = 30;
+
+const maxSpeed = 10;
+const maxForce = 1;
+var colorFarest, colorNearest;
+
+var cols, rows;
+
+var population;
+
+var target;
+var obstacles = [];
+var currentObstacle = null;
+
+function setup() {
+  createCanvas(1080 + panelWidth, 640);
+  width0 = width - panelWidth;
+  cols = width0 / gridScale;
+  rows = height / gridScale;
+
+  colorFarest = color(255, 0, 0, 120);
+  colorNearest = color(0, 255, 0, 120);
+
+  smooth(100);
+  textSize(20);
+  textFont('Roboto');
+  lifeTime = width0 / 3;
+  population = new Population(populationSize);
+  target = new Obstacle(width0 * .7, height / 2 - targetSize / 2, targetSize, targetSize);
+}
+function draw() {
+  stroke(0);
+  fill(255);
+  rect(0, 0, width0, height);
+  // background(255);
+  for (obstacle of obstacles) {
+    obstacle.display(100);
+  }
+  target.display('#00FF00');
+
+  if (lifeCycle < lifeTime) {
+    population.live(obstacles);
+    lifeCycle++;
+  }
+  else {
+    lifeCycle = 0;
+    population.calcFitness();
+    population.generate();
+  }
+  if (currentObstacle != null) currentObstacle.display(50);
+  showPanel();
+}
+function showPanel() {
+  fill(255);
+  rect(width0, 0, panelWidth, height);
+  fill(0);
+  stroke(0);
+  textAlign(LEFT);
+  let txt;
+  txt =
+    "Population size : " + populationSize + '\n' +
+    "Generation : " + population.generation + '\n' +
+    "Mutation rate : " + mutationRate * pow(1 + floor(population.failures / 10), 1.1) + '\n' +
+    "Time : " + lifeCycle + '\n' +
+    "Last Arrive Time : " + (population.lastTime == lifeTime ? "Did not Arrived" : population.lastTime) + '\n' +
+    "Last success rate : " + population.lastWinners * 100 / populationSize + " %";
+  text(txt, width0 + 20, 10, panelWidth, height - 20);
+}
+var movingTarget = false;
+function mousePressed() {
+  if (mouseX > width0) return;
+  if (target.contains(createVector(mouseX, mouseY))) {
+    movingTarget = true;
+    target.x = mouseX - target.w / 2;
+    target.y = mouseY - target.h / 2;
+    target.center.x = mouseX;
+    target.center.y = mouseY;
+    return;
+  }
+  if (mouseButton == RIGHT) {
+    for (ob of obstacles) {
+      if (ob.contains(createVector(mouseX, mouseY))) {
+        obstacles.pop(ob);
+        break;
+      }
+    }
+  } else currentObstacle = new Obstacle(mouseX, mouseY, 0, 0);
+}
+function mouseDragged() {
+  if (movingTarget && mouseX < width0) {
+    target.x = mouseX - target.w / 2;
+    target.y = mouseY - target.h / 2;
+    target.center.x = mouseX;
+    target.center.y = mouseY;
+    return;
+  }
+  if (currentObstacle == null) return;
+  if (mouseButton == RIGHT) return;
+
+  currentObstacle.w = mouseX - currentObstacle.x;
+  currentObstacle.h = mouseY - currentObstacle.y;
+}
+function mouseReleased() {
+  movingTarget = false;
+  if (currentObstacle == null) return;
+  if (mouseButton == RIGHT) return;
+  if (currentObstacle.w < 0) {
+    currentObstacle.x += currentObstacle.w;
+    currentObstacle.w *= -1;
+  }
+  if (currentObstacle.h < 0) {
+    currentObstacle.y += currentObstacle.h;
+    currentObstacle.h *= -1;
+  }
+  obstacles.push(currentObstacle);
+  currentObstacle = null;
+}</script>
+    <script>class Obstacle {
+    constructor(x, y, w, h) {
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.center = createVector(x + w / 2, y + h / 2);
+    }
+    contains(v) {
+        return v.x > this.x && v.x < this.x + this.w && v.y > this.y && v.y < this.y + this.h;
+    }
+    display(clr) {
+        fill(clr);
+        stroke(0);
+        rect(this.x, this.y, this.w, this.h);
+    }
+}</script>
+    <script>class Ant {
+    constructor(pos, dna) {
+        this.pos = pos;
+        this.dna = dna;
+        this.vel = createVector();
+        this.acc = createVector();
+        this.r = 10;
+        this.recordDist = width;
+
+        this.alive = true;
+        this.stopped = false;
+        this.arriveTime= lifeTime;
+    }
+    obstacles(obs) {
+        for (obstacle of obs) {
+            if (obstacle.contains(this.pos)) return true;
+        }
+        return false;
+    }
+    calcFitness() {
+        let d = this.recordDist;
+        d /= 10;
+        this.fitness = 1e10 / pow(this.arriveTime * d, 6);
+        if (!this.alive) this.fitness /= 1000;
+        // console.log(this.arriveTime);
+    }
+    run(obs, clr) {
+        if (!this.stopped) {
+            this.update();
+            if (this.borders() || this.obstacles(obs)) {
+                this.alive = false;
+                this.stopped = true;
+            }
+        }
+        this.display(clr);
+    }
+    update() {
+        if (!this.alive || this.finished()) return;
+        var x = floor(this.pos.x / gridScale);
+        var y = floor(this.pos.y / gridScale);
+        x = constrain(x, 0, cols - 1);
+        y = constrain(y, 0, rows - 1);
+
+        let desired = this.dna.genes[lifeCycle].copy();
+        desired.setMag(maxSpeed);
+        let steer = p5.Vector.sub(desired, this.vel);
+        this.applyForce(steer);
+
+        this.acc.limit(maxForce);
+        this.vel.add(this.acc);
+        this.vel.limit(maxSpeed);
+        this.pos.add(this.vel);
+        this.acc.mult(0);
+    }
+    finished() {
+        let d = min(this.recordDist, p5.Vector.dist(this.pos, target.center));
+        if (d < this.recordDist) {
+            this.recordDist = d;
+        }
+        if (target.contains(this.pos)) {
+            this.stopped = true;
+            return true;
+        }
+        return false;
+    }
+    borders() {
+        return (this.pos.x + this.vel.x < 0 || this.pos.x + this.vel.x > width0 || this.pos.y + this.vel.y < 0 || this.pos.y + this.vel.y > height);
+    }
+    applyForce(f) {
+        this.acc.add(f);
+    }
+    highlight() {
+        fill(200, 0, 255, 160);
+        stroke(0);
+        circle(this.pos.x, this.pos.y, this.r * 2.3);
+        //line(pos.x, pos.y, target.center.x, target.center.y);
+        this.display(colorNearest);
+    }
+    display(clr) {
+        push();
+        fill(clr);
+        stroke(0, 200);
+        noStroke();
+        translate(this.pos.x, this.pos.y);
+        rotate(this.vel.heading());
+        triangle(this.r, 0, -this.r, -this.r / 2, -this.r, this.r / 2);
+        pop();
+    }
+}</script>
+    <script>class DNA {
+    constructor() {
+        this.genes = []
+        for (let i = 0; i < lifeTime; i++) {
+            this.genes.push(p5.Vector.random2D());
+        }
+    }
+    crossover_one_point(partner) {
+        let childgenes = new DNA();
+        let partition = int(random(this.genes.length));
+        // console.log(this.genes);
+        for (let i = 0; i < this.genes.length; i++) {
+            if (i < partition) childgenes.genes[i] = this.genes[i].copy();
+            else childgenes.genes[i] = partner.genes[i].copy();
+        }
+        return childgenes;
+    }
+    crossover_two_point(partner) {
+        let childgenes = new DNA(this.genes.length);
+        let partition1 = int(random(this.genes.length / 2));
+        let partition2 = int(random(this.genes.length / 2, this.genes.length));
+        for (let i = 0; i < this.genes.length; i++) {
+            if (i < partition1) childgenes.genes[i] = this.genes[i].copy();
+            else if (i < partition2) childgenes.genes[i] = partner.genes[i].copy();
+            else childgenes.genes[i] = genes[i].copy();
+        }
+        return childgenes;
+    }
+    mutate(m) {
+        for (let i = 0; i < this.genes.length; i++) {
+            if (random(1) < m) {
+                this.genes[i] = p5.Vector.random2D();
+            }
+        }
+    }
+}</script>
+    <script>class Population {
+  constructor(num) {
+    this.population = [];
+    this.minArriveTime = lifeTime, this.lastTime = lifeTime;
+    this.winners = 0, this.lastWinners = 0;
+    this.failures = 0, this.generation = 0;
+    for (let i = 0; i < num; i++) {
+      let pos = createVector(20, height / 2);
+      this.population[i] = new Ant(pos, new DNA());
+    }
+  }
+  live(obs) {
+    let recordDist = width;
+    let closest = 0;
+
+    for (let i = 0; i < this.population.length; i++) {
+      let ant = this.population[i];
+      if (ant.finished()) {
+        ant.arriveTime = lifeCycle;
+        // console.log('now')
+        this.minArriveTime = min(this.minArriveTime, lifeCycle);
+      }
+      let d = ant.recordDist;
+      if (d < recordDist) {
+        closest = i;
+        recordDist = d;
+      }
+    }
+    for (let ant of this.population) {
+      // let score = map(ant.recordDist, recordDist, width, 0, 1);
+      let score= ant.recordDist/ recordDist;
+      let clr = lerpColor(colorNearest, colorFarest, score);
+      ant.run(obs, clr);
+    }
+    this.population[closest].highlight();
+  }
+  calcFitness() {
+    for (let ant of this.population) {
+      ant.calcFitness();
+    }
+  }
+  selectOne() {
+    let index = 0;
+    let r = random(1);
+    let tf = this.totalFitness();
+    while (r > 0) {
+      r -= this.population[index].fitness / tf;
+      index++;
+    }
+    return this.population[index - 1];
+  }
+  generate() {
+    for (let ant of this.population) {
+      if (ant.stopped && ant.alive) this.winners++;
+    }
+    if (this.winners == 0) this.failures++;
+    else this.failures = 0;
+
+    let goodMutationRate = mutationRate * pow(1 + floor(this.failures / 10), 1.1);
+    //println(goodMutationRate);
+
+    let newGenerationDNAs = [];
+    for (let i = 0; i < this.population.length; i++) {
+      let mom = this.selectOne();
+      let dad = this.selectOne();
+
+      let momgenes = mom.dna;
+      let dadgenes = dad.dna;
+
+      let childgenes = momgenes.crossover_one_point(dadgenes);
+      childgenes.mutate(goodMutationRate);
+      newGenerationDNAs[i] = childgenes;
+    }
+    for (let i = 0; i < this.population.length; i++) {
+      let pos = createVector(20, height / 2);
+      this.population[i] = new Ant(pos, newGenerationDNAs[i]);
+    }
+    this.updateGeneration();
+  }
+  updateGeneration() {
+    this.generation++;
+    this.lastTime = this.minArriveTime;
+    this.minArriveTime = lifeTime;
+    this.lastWinners = this.winners;
+    this.winners = 0;
+  }
+  totalFitness() {
+    let total = 0;
+    for (let ant of this.population) {
+      total += ant.fitness;
+    }
+    return total;
+  }
+}
+</script>
+</body>
+</html>
